@@ -99,3 +99,10 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+
+# Project settings
+.idea
+firstGuess/raw.nc
+QC/param.nc
+QC/test.db
