@@ -2,6 +2,7 @@
 import os
 import sys
 import numpy as np
+from math import isnan
 import argparse
 import netCDF4
 from obsProperties import observation,obsQuality
@@ -17,11 +18,15 @@ def writeParamFile(filename,observations,method):
     cis = list()
     for obs in observations:
         if obs.status <= 0:
-            lons += [obs.lon]
-            lats += [obs.lat]
-            values += [obs.value]
-            elevs += [obs.elevation]
-            cis += [obs.ci]
+            if not isnan(obs.elevation):
+                if obs.elevation > 7000:
+                    print "MT Everest",obs.lon,obs.lat,obs.value,obs.elevation
+                else:
+                    lons += [obs.lon]
+                    lats += [obs.lat]
+                    values += [obs.value]
+                    elevs += [obs.elevation]
+                    cis += [obs.ci]
 
     S = len(lons)
     file = netCDF4.Dataset(filename, 'w')
@@ -57,7 +62,7 @@ def writeParamFile(filename,observations,method):
     file.close()
 
 
-def readInput(var,files,lonrangeInput,latrangeInput,keepInput,providersInput,delim,default_ci,override_ci,add,multiply):
+def readInput(var,file,lonrangeInput,latrangeInput,keepInput,providersInput,delim,default_ci,override_ci,add,multiply):
 
     latrange = [-180, 180]
     lonrange = [-180, 180]
@@ -67,70 +72,69 @@ def readInput(var,files,lonrangeInput,latrangeInput,keepInput,providersInput,del
         lonrange = [float(x) for x in lonrangeInput.split(',')]
 
     observations=list()
-    for file in files:
-        ifile = open(file, 'r')
-        header = ifile.readline().strip().split(delim)
-        Ilat = header.index("lat")
-        Ilon = header.index("lon")
-        Ielev = header.index("elev")
-        Ici = None
-        if "rep" in header:
-            Ici = header.index("rep")
-        Ivalue = header.index("value")
-        keep = None
-        if keepInput is not None:
-            keep = [int(q) for q in keepInput.split(',')]
-            if "dqc" not in header:
-                print("File '%s' missing 'dqc' column. Cannot select based on dqc." % file)
+    ifile = open(file, 'r')
+    header = ifile.readline().strip().split(delim)
+    Ilat = header.index("lat")
+    Ilon = header.index("lon")
+    Ielev = header.index("elev")
+    Ici = None
+    if "rep" in header:
+        Ici = header.index("rep")
+    Ivalue = header.index("value")
+    keep = None
+    if keepInput is not None:
+        keep = [int(q) for q in keepInput.split(',')]
+        if "dqc" not in header:
+            print("File '%s' missing 'dqc' column. Cannot select based on dqc." % file)
+            return observations
+        Idqc = header.index("dqc")
+
+    providers = None
+    if providersInput is not None:
+        providers = [int(q) for q in providersInput.split(',')]
+        if "prid" not in header:
+            print("File '%s' missing 'prid' column. Cannot select based on provider." % file)
+            return observations
+        Iprovider = header.index("prid")
+
+    for line in ifile:
+        words = line.strip().split(delim)
+        lat = float(words[Ilat])
+        lon = float(words[Ilon])
+        oQ = obsQuality(15)
+
+        if keep is not None:
+            dqc = int(words[Idqc])
+            if dqc not in keep:
                 continue
-            Idqc = header.index("dqc")
-
-        providers = None
-        if providersInput is not None:
-            providers = [int(q) for q in providersInput.split(',')]
-            if "prid" not in header:
-                print("File '%s' missing 'prid' column. Cannot select based on provider." % file)
+        if providers is not None:
+            provider = int(words[Iprovider])
+            if provider not in providers:
                 continue
-            Iprovider = header.index("prid")
+        elev=float(words[Ielev])
+        value=(float(words[Ivalue])+add)*multiply
+        ci_value = default_ci
+        if override_ci is not None:
+            ci_value = override_ci
+        elif Ici is not None:
+            try:
+                ci_value = float(words[Ici])
+            except Exception as e:
+                ci_value = default_ci
 
-        for line in ifile:
-            words = line.strip().split(delim)
-            lat = float(words[Ilat])
-            lon = float(words[Ilon])
-            oQ = obsQuality(15)
-
-            if keep is not None:
-                dqc = int(words[Idqc])
-                if dqc not in keep:
-                    continue
-            if providers is not None:
-                provider = int(words[Iprovider])
-                if provider not in providers:
-                    continue
-            elev=float(words[Ielev])
-            value=(float(words[Ivalue])+add)*multiply
-            ci_value = default_ci
-            if override_ci is not None:
-                ci_value = override_ci
-            elif Ici is not None:
-                try:
-                    ci_value = float(words[Ici])
-                except Exception as e:
-                    ci_value = default_ci
-
-            if lat > latrange[0] and lat < latrange[1] and lon > lonrange[0] and lon < lonrange[1]:
-                observations += [observation(var, lon, lat,value,oQ,elevation=elev,ci=ci_value)]
-            else:
-                obs=observation(var, lon, lat,value,oQ,elevation=elev, ci=ci_value)
-                obs.status=1
-                observations += [obs]
+        if lat > latrange[0] and lat < latrange[1] and lon > lonrange[0] and lon < lonrange[1]:
+            observations += [observation(var, lon, lat,value,oQ,elevation=elev,ci=ci_value)]
+        else:
+            obs=observation(var, lon, lat,value,oQ,elevation=elev, ci=ci_value)
+            obs.status=1
+            observations += [obs]
 
 
     return observations
 
 def main():
     parser = argparse.ArgumentParser(description='Create parameter file for calibration methods (currently OI and override) in gridpp.i The program reads TITAN output and puts observed and CI values into the parameter file. If CI (rep column) is missing in the input, then a default value is used.')
-    parser.add_argument('files', help='Netatmo input file', nargs="*")
+    parser.add_argument('files', help='Input file', nargs="*")
     parser.add_argument('-o', help='Output file', dest="ofilename", required=True)
     parser.add_argument('-k', metavar="FLAGS", help='Only keep rows with these DQC flags. Comma-separated list accepted.', dest="keep")
     parser.add_argument('-m', default="oi", help='Write parameters for this method (default oi).', dest="method", choices=["oi", "override"])
@@ -143,20 +147,9 @@ def main():
     parser.add_argument('--override_ci', type=float, help='Override CI values with this value (if -m oi)', dest="override_ci")
     parser.add_argument('--default_ci', default=1, type=float, help='Use this value if CI is missing (if -m oi; default 1)', dest="default_ci")
     parser.add_argument('--debug', help='Show debug information', action="store_true")
-
-    # Need information on:
-    # Variable with quality information
-    # first guess file
-    # sqlite database name
-    #
-
-    fgfile = "/home/trygveasp/PycharmProjects/gridppInNWP/firstGuess/raw.nc"
-    #fgfile=None
-
-    var = "air_temperature_2m"
-    #var = "surface_snow_thickness"
-    sqlitefile="test.db"
-    #sqlitefile=None
+    parser.add_argument('-d','--db', dest="sqlitefile", default=None, type=str,help='Name of database to write')
+    parser.add_argument('-f','--fg', dest="fgfile", default=None, type=str,help='Name of first guess file')
+    parser.add_argument('-v', '--var', dest="var", default=None, type=str, help='Name of variable')
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -166,31 +159,44 @@ def main():
 
     # Setup database
     db=None
-    if sqlitefile is not None:
-        db = sqlite(sqlitefile)
+    if args.sqlitefile is not None:
+        db = sqlite(args.sqlitefile)
 
-    # Read observations
-    observations=readInput(var, args.files, args.lonrange, args.latrange, args.keep,
-                           args.providers, args.delim, args.default_ci, args.override_ci,
-                           args.add, args.multiply)
+    print args.files
 
 
+    delim=[",",";"]
+    keep=[None,"0"]
+    files=args.files
+    add=[0,273.15]
+    multiply=[1,1]
+    fgcheck=[True,False]
 
-    # First guess check
-    if fgfile is not None:
-        print "Performing First Guess Check"
-        calculateFirstGuess(fgfile,var,observations,db=db)
-        FGCheck(observations,db)
+    if any(fgcheck) and args.fgfile is None:
+        print "You must specify a first guess file"
+        sys.exit(1)
 
-    #for obs in observations:
-    #    print obs.getStatusText()
+    observations = list()
+    for file in range(0,len(files)):
 
-    netatmo=["/home/trygveasp/PycharmProjects/gridppInNWP/test/data/20180312T06Z_air_temperature_2m_netatmo.txt"]
-    observations_netatmo = readInput(var, netatmo, None, None,None,None,";",1,None,0,1)
-    observations=observations+observations_netatmo
+        print files[file]
+        # Read observations
+        observations_read=readInput(args.var,files[file], args.lonrange, args.latrange, keep[file],
+                           args.providers, delim[file], args.default_ci, args.override_ci,
+                           add[file], multiply[file])
 
-    print len(observations)
-    if sqlitefile is not None:
+
+
+        # First guess check
+        if fgcheck[file]:
+            print "Performing First Guess Check"
+            calculateFirstGuess(args.fgfile,args.var,observations_read,db=db)
+            FGCheck(observations_read,db)
+
+        observations=observations+observations_read
+
+
+    if args.sqlitefile is not None:
         db.update(observations)
 
     # Write parameter file
