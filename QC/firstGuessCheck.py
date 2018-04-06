@@ -1,35 +1,9 @@
-from cartopy import crs as ccrs
-import matplotlib.pyplot as plt
 import netCDF4
 import numpy as np
 from scipy.interpolate import NearestNDInterpolator
 import abc
 import scipy.spatial.qhull as qhull
 import sys
-
-def plotStatus(observations):
-
-    # Plotting
-    lons=list()
-    lats=list()
-    status=list()
-    s=list()
-    for obs in observations:
-        lons += [obs.lon]
-        lats += [obs.lat]
-        status+=[obs.status]
-        if obs.status == 0:
-           s+=[40]
-        else:
-           s+=[80*int(obs.status)]
-
-    proj = ccrs.LambertConformal(central_longitude=15., central_latitude=63., standard_parallels=[63.])
-    ax = plt.axes(projection=proj)
-    ax.coastlines(resolution="10m")
-    plt.scatter(lons, lats, c=status, s=s, transform=ccrs.PlateCarree())
-    plt.colorbar()
-    plt.show()
-
 
 def FGCheck(observations,db=None):
 
@@ -39,15 +13,19 @@ def FGCheck(observations,db=None):
     if db is not None: db.update(observations)
 
 
-def calculateFirstGuess(fname,var,observations,db=None,plot=False):
+def readFile(fname,var):
+    nc = netCDF4.Dataset(fname, 'r')
+    var_lons = nc["longitude"]
+    var_lats = nc["latitude"]
+    field = nc[var]
+    return nc,var_lons,var_lats,field
 
-    nc=netCDF4.Dataset(fname, 'r')
-    var_lons=nc["longitude"]
-    var_lats=nc["latitude"]
-    field=nc[var]
+def closeFile(nc):
+    nc.close()
+
+def interpolate(method,observations,var_lons,var_lats,field):
 
     # Find first guess for point (nearest neighbour)
-    interpolation="nearest"
 
     lons = list()
     lats = list()
@@ -58,7 +36,7 @@ def calculateFirstGuess(fname,var,observations,db=None,plot=False):
     print("Interpolating "+str(len(observations))+" observations." )
     print("Input file dimensions: var_lons="+str(var_lons.shape)+" var_lats="+str(var_lons.shape))
 
-    if interpolation == "nearest":
+    if method == "nearest":
         nearest = NearestNeighbour(lons, lats, var_lons, var_lats)
 
         i=0
@@ -67,26 +45,49 @@ def calculateFirstGuess(fname,var,observations,db=None,plot=False):
             ind_x = nearest.index[i][1]
             obs.ind_x = ind_x
             obs.ind_y = ind_y
+            if obs.ind_x > 0 and obs.ind_y > 0:
+                if obs.status == -1: obs.status = 0
+            else:
+                obs.status=11
+            i=i+1
+
+def calculateDeparture(fname,var,observations,dep,interp=True):
+
+    nc,var_lons, var_lats, field=readFile(fname,var)
+    method="nearest"
+    if interp: interpolate(method, observations, var_lons, var_lats, field)
+
+    if method == "nearest":
+
+        i=0
+        for obs in observations:
 
             #print field.shape
-            if ind_x > 0 and ind_y > 0:
-                if obs.status == -1: obs.status = 0
-                interpolated_value = field[0][ind_y][ind_x]
-                #print obs.value,interpolated_value
-                obs.fgdep=interpolated_value-obs.value
+            if obs.ind_x > 0 and obs.ind_y > 0:
+                interpolated_value=field[0][obs.ind_y][obs.ind_x]
+                #print interpolated_value,obs.value
+                depval= interpolated_value - obs.value
                 #if interpolated_value == 0 and obs.value > 0.01:
                 #    print "No snow ",obs.lon,obs.lat,obs.value
 
             else:
-                obs.fgdep = np.nan
-                obs.status=1
+                depval = np.nan
+                obs.status=11
+
+            #print depval
+            if dep == "fg":
+                obs.fgdep = depval
+            elif dep == "an":
+                if obs.status <= 0:
+                    obs.andep = depval
+                else:
+                    obs.andep=np.nan
+            else:
+                print "Departure type " + str(dep) + " not defined!"
+                sys.exit(1)
             i=i+1
 
-    if db is not None:
-        db.update(observations)
-        # Test on updating twice
-        db.update(observations)
-
+    closeFile(nc)
 
 class Interpolation(object):
     __metaclass__ = abc.ABCMeta

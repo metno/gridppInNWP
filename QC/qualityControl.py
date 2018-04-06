@@ -6,7 +6,7 @@ from math import isnan
 import argparse
 import netCDF4
 from obsProperties import observation,obsQuality
-from firstGuessCheck import calculateFirstGuess,FGCheck,plotStatus
+from firstGuessCheck import calculateDeparture,FGCheck
 from db import sqlite
 
 def writeParamFile(filename,observations,method):
@@ -71,6 +71,7 @@ def readInput(var,file,lonrangeInput,latrangeInput,keepInput,providersInput,deli
     if lonrangeInput is not None:
         lonrange = [float(x) for x in lonrangeInput.split(',')]
 
+    #print file
     observations=list()
     ifile = open(file, 'r')
     header = ifile.readline().strip().split(delim)
@@ -103,10 +104,13 @@ def readInput(var,file,lonrangeInput,latrangeInput,keepInput,providersInput,deli
         lon = float(words[Ilon])
         oQ = obsQuality(15)
 
+        status=-1
         if keep is not None:
             dqc = int(words[Idqc])
-            if dqc not in keep:
-                continue
+            status=dqc
+            #print status
+            #if dqc not in keep:
+            #    continue
         if providers is not None:
             provider = int(words[Iprovider])
             if provider not in providers:
@@ -122,11 +126,13 @@ def readInput(var,file,lonrangeInput,latrangeInput,keepInput,providersInput,deli
             except Exception as e:
                 ci_value = default_ci
 
+        #print lon,lat,value,add,multiply
+        obs=observation(var, lon, lat, value, oQ, elevation=elev, ci=ci_value)
+        obs.status=status
         if lat > latrange[0] and lat < latrange[1] and lon > lonrange[0] and lon < lonrange[1]:
-            observations += [observation(var, lon, lat,value,oQ,elevation=elev,ci=ci_value)]
+            observations += [obs]
         else:
-            obs=observation(var, lon, lat,value,oQ,elevation=elev, ci=ci_value)
-            obs.status=1
+            obs.status=11
             observations += [obs]
 
 
@@ -186,12 +192,13 @@ def main():
                            add[file], multiply[file])
 
 
-
         # First guess check
-        if fgcheck[file]:
-            print "Performing First Guess Check"
-            calculateFirstGuess(args.fgfile,args.var,observations_read,db=db)
-            FGCheck(observations_read,db)
+        if args.fgfile is not None:
+            calculateDeparture(args.fgfile, args.var, observations_read, "fg")
+
+            if fgcheck[file]:
+                print "Performing First Guess Check"
+                FGCheck(observations_read,db)
 
         observations=observations+observations_read
 

@@ -5,7 +5,7 @@ class obsQuality(object):
 
 
 class observation():
-        def __init__(self,name,lon,lat,value,obsQ,stid=None,elevation=None,fgdep=None,ci=1.):
+        def __init__(self,name,lon,lat,value,obsQ,stid=None,elevation=None,fgdep=None,andep=None, ci=1.):
             self.name=name
             self.lon=lon
             self.lat=lat
@@ -14,6 +14,7 @@ class observation():
             self.elevation=elevation
             self.ci=ci
             self.fgdep=fgdep
+            self.andep=andep
             self.interpolation=None
             self.ind_x=-1
             self.ind_y=-1
@@ -29,6 +30,14 @@ class observation():
         @fgdep.setter
         def fgdep(self, fgdep):
             self.fgdep = fgdep
+
+        @property
+        def andep(self):
+            return self.andep
+
+        @andep.setter
+        def andep(self, andep):
+            self.andep = andep
 
         @property
         def ind_x(self):

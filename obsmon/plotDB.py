@@ -51,7 +51,7 @@ def plotProperty(db,prop):
 
     conn=sqlite3.connect(db)
     c = conn.cursor()
-    c.execute("SELECT lon,lat,"+prop+" FROM obs")
+    c.execute("SELECT lon,lat,"+prop+" FROM obs where status <= 0")
     data = c.fetchall()
     lons=list()
     lats=list()
@@ -79,8 +79,35 @@ def plotProperty(db,prop):
     # gray_r, hot, hot_r, hsv, hsv_r, inferno, inferno_r, jet, jet_r, magma, magma_r, nipy_spectral, nipy_spectral_r,
     # ocean, ocean_r, pink, pink_r, plasma, plasma_r, prism, prism_r, rainbow, rainbow_r, seismic, seismic_r, spectral,
     # spectral_r, spring, spring_r, summer, summer_r, terrain, terrain_r, viridis, viridis_r, winter, winter_r
-    plt.scatter(lons, lats, c=values, transform=ccrs.PlateCarree(),cmap="Paired")
+    plt.scatter(lons, lats, c=values, s=40, transform=ccrs.PlateCarree(),cmap="coolwarm",vmin=-5,vmax=5)
     plt.colorbar()
+    plt.show()
+
+
+def plotHistogram(db):
+
+    conn=sqlite3.connect(db)
+    c = conn.cursor()
+    c.execute("SELECT lon,lat,fgdep,andep FROM obs where status <= 0 and fgdep > -30")
+    data = c.fetchall()
+    lons=list()
+    lats=list()
+    fgdeps=list()
+    andeps=list()
+    for row in data:
+        lons+=[row[0]]
+        lats+=[row[1]]
+        fgdeps+=[row[2]]
+        andeps+=[row[3]]
+
+    conn.close()
+
+    num_bins=200
+    plt.subplot(2,1,1)
+    plt.hist(fgdeps, num_bins, facecolor='blue', alpha=0.5)
+    plt.subplot(2,1,2)
+    plt.hist(andeps, num_bins, facecolor='red', alpha=0.5)
+    #plt.colorbar()
     plt.show()
 
 def main():
@@ -99,6 +126,8 @@ def main():
         plotStatus(args.db)
     elif args.type == "prop":
         plotProperty(args.db,args.prop)
+    elif args.type == "histogram":
+        plotHistogram(args.db)
     else:
         raise NotImplementedError
 

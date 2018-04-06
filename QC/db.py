@@ -18,7 +18,7 @@ class sqlite(object):
         c = self.conn.cursor()
 
         # Create table
-        c.execute("CREATE TABLE IF NOT EXISTS obs (lon, lat,name, value, fgdep, elevation, status)")
+        c.execute("CREATE TABLE IF NOT EXISTS obs (lon, lat,name, value, fgdep, andep, elevation, status)")
 
         # Save (commit) the changes
         self.conn.commit()
@@ -27,13 +27,14 @@ class sqlite(object):
 
         c = self.conn.cursor()
         for obs in observations:
+            #print obs.lon,obs.lat,obs.value,obs.fgdep,obs.andep,obs.status
             c.execute("SELECT lon,lat FROM obs WHERE lon == "+str(obs.lon)+" AND lat == "+str(obs.lat)+"")
             if c.fetchone() == None:
                 #print "new"
-                c.execute("INSERT INTO obs VALUES (?, ?, ?, ?, ?, ?, ?) ",(obs.lon,obs.lat,obs.name,obs.value,obs.fgdep,obs.elevation,obs.status))
+                c.execute("INSERT INTO obs VALUES (?, ?, ?, ?, ?, ?,?, ?) ",(obs.lon,obs.lat,obs.name,obs.value,obs.fgdep,obs.andep,obs.elevation,obs.status))
             else:
                 #print "update"
-                c.execute("UPDATE obs SET lon=?, lat=?, name=?, value=?, fgdep=?, elevation=?, status=? WHERE lon == "+str(obs.lon)+" AND lat == "+str(obs.lat),(obs.lon, obs.lat, obs.name, obs.value, obs.fgdep, obs.elevation, obs.status))
+                c.execute("UPDATE obs SET lon=?, lat=?, name=?, value=?, fgdep=?, andep=?, elevation=?, status=? WHERE lon == "+str(obs.lon)+" AND lat == "+str(obs.lat),(obs.lon, obs.lat, obs.name, obs.value, obs.fgdep, obs.andep,obs.elevation, obs.status))
 
         # Save (commit) the changes
         self.conn.commit()
