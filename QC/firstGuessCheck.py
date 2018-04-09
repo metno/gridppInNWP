@@ -45,10 +45,6 @@ def interpolate(method,observations,var_lons,var_lats,field):
             ind_x = nearest.index[i][1]
             obs.ind_x = ind_x
             obs.ind_y = ind_y
-            if obs.ind_x > 0 and obs.ind_y > 0:
-                if obs.status == -1: obs.status = 0
-            else:
-                obs.status=11
             i=i+1
 
 def calculateDeparture(fname,var,observations,dep,interp=True):
@@ -65,20 +61,16 @@ def calculateDeparture(fname,var,observations,dep,interp=True):
             #print field.shape
             if obs.ind_x > 0 and obs.ind_y > 0:
                 interpolated_value=field[0][obs.ind_y][obs.ind_x]
-                #print interpolated_value,obs.value
-                depval= interpolated_value - obs.value
-                #if interpolated_value == 0 and obs.value > 0.01:
-                #    print "No snow ",obs.lon,obs.lat,obs.value
+                depval= interpolated_value - (obs.value+273.15)
 
             else:
                 depval = np.nan
-                obs.status=11
 
             #print depval
             if dep == "fg":
                 obs.fgdep = depval
             elif dep == "an":
-                if obs.status <= 0:
+                if obs.dqc == 0:
                     obs.andep = depval
                 else:
                     obs.andep=np.nan
